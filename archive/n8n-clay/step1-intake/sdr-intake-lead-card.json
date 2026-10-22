@@ -1,0 +1,583 @@
+{
+  "name": "SDR Intake + Lead Card",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Part A: Intake\nSomeone mentions **@icp-bot** with a LinkedIn link.\nKnown person \u2192 lead card in the thread. New person \u2192 saved in Supabase, sent to Clay.",
+        "height": 700,
+        "width": 2700,
+        "color": 7
+      },
+      "id": "ebdead98-e4a8-4f35-b442-6c898aa0aa3c",
+      "name": "Note: Part A",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Part B: Clay results\nClay's HTTP API column posts the enriched person here.\nSaved to Supabase \u2192 the same lead card is posted in the lead's thread.",
+        "height": 460,
+        "width": 2700,
+        "color": 4
+      },
+      "id": "3187bb89-170c-4ab7-9ea6-ff716fc52dc0",
+      "name": "Note: Part B",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "trigger": [
+          "app_mention"
+        ],
+        "watchWorkspace": true,
+        "options": {}
+      },
+      "id": "1dac73dc-8f7d-4efd-9b0a-933339b5b85e",
+      "name": "Slack Trigger",
+      "type": "n8n-nodes-base.slackTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "bc2ad4ee-fa28-4fff-9a37-a3dedb04ac1f"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fill these in once. They are not secrets: keys live in n8n Credentials.\nreturn [{\n  json: {\n    supabase_url: 'https://YOUR-PROJECT.supabase.co',\n    clay_webhook_url: 'https://api.clay.com/v3/sources/webhook/YOUR-WEBHOOK-ID',\n  },\n}];\n"
+      },
+      "id": "5bbe8257-b345-4820-a5b3-7b931bea571c",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn any version of a LinkedIn profile link into one standard form,\n// so the same person always matches the same Supabase row.\nconst event = $('Slack Trigger').first().json;\nconst text = event.text || '';\n\n// Slack wraps links as <https://...> or <https://...|label>.\n// Also accepts m.linkedin.com and /mwlite/in/ mobile links.\nconst match = text.match(/linkedin\\.com\\/(?:mwlite\\/)?in\\/([^\\/?#\\s>|]+)/i);\nconst slug = match ? match[1].toLowerCase() : null;\n\nreturn [{\n  json: {\n    valid: Boolean(slug),\n    linkedin_url: slug ? `https://www.linkedin.com/in/${slug}` : null,\n    sdr_slack_id: event.user,\n    channel: event.channel,\n    // Reply under the SDR's message (or in the thread they mentioned us in)\n    thread_ts: event.thread_ts || event.ts,\n  },\n}];\n"
+      },
+      "id": "18431a7f-6dd1-49fe-a151-78bb330c4b24",
+      "name": "Clean URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "dd04ec8d-0c26-4b1d-aca8-74ceb650c508",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e410a0d0-fbc0-4569-97df-7e4eeabc212d",
+      "name": "Valid LinkedIn URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ channel: $json.channel, thread_ts: $json.thread_ts, text: \"That doesn't look like a LinkedIn profile link. Try: https://www.linkedin.com/in/username\" }) }}",
+        "options": {}
+      },
+      "id": "9035bc28-fc73-4e94-8a99-b5a73866c9cd",
+      "name": "Slack: invalid link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/leads?select=*&linkedin_url=eq.{{ encodeURIComponent($('Clean URL').first().json.linkedin_url) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "id": "88714c7c-be47-4d9e-a680-81fb7d2ebcbb",
+      "name": "Supabase: find lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        260
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "fec3e6ea-be2c-4148-8fac-84ae2f9286f1",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c59b37b2-0ee9-48f0-a9dd-46076ddbcca5",
+      "name": "Already in Supabase?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// The person is already in Supabase: reply under the NEW mention,\n// and say who owns them and where the original thread is.\nconst lead = $json;\nconst mention = $('Clean URL').first().json;\n\nconst link = lead.slack_channel_id && lead.slack_thread_ts\n  ? ` \u00b7 <https://slack.com/archives/${lead.slack_channel_id}/p${lead.slack_thread_ts.replace('.', '')}|original thread>`\n  : '';\n\nconst note = lead.status === 'do_not_contact'\n  ? ':no_entry: This person is marked *do not contact*.'\n  : `:repeat: Already in the pipeline \u00b7 owner <@${lead.sdr_slack_id}> \u00b7 status \\`${lead.status}\\`${link}`;\n\nreturn [{\n  json: {\n    ...lead,\n    reply_channel: mention.channel,\n    reply_thread_ts: mention.thread_ts,\n    reply_note: note,\n  },\n}];\n"
+      },
+      "id": "418f54cb-0d3c-4834-9f19-4e3a7f31688c",
+      "name": "Mark as existing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/leads",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ linkedin_url: $('Clean URL').first().json.linkedin_url, sdr_slack_id: $('Clean URL').first().json.sdr_slack_id, slack_channel_id: $('Clean URL').first().json.channel, slack_thread_ts: $('Clean URL').first().json.thread_ts, status: 'received' }) }}",
+        "options": {}
+      },
+      "id": "4e5190ee-e312-4981-9139-87243404a32b",
+      "name": "Supabase: create lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ channel: $('Clean URL').first().json.channel, thread_ts: $('Clean URL').first().json.thread_ts, text: `:mag: Enriching ${$('Clean URL').first().json.linkedin_url}, the lead card will appear here in a couple of minutes.`, unfurl_links: false }) }}",
+        "options": {}
+      },
+      "id": "979d45aa-f90e-4c7b-9228-28d555b9a7fe",
+      "name": "Slack: enriching",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.clay_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ lead_id: $('Supabase: create lead').first().json.id, linkedin_url: $('Clean URL').first().json.linkedin_url }) }}",
+        "options": {}
+      },
+      "id": "2b899ac0-2851-47a3-a78b-174a55f65612",
+      "name": "Send to Clay",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Config').first().json.supabase_url }}/rest/v1/leads?id=eq.{{ $('Supabase: create lead').first().json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'enriching' }) }}",
+        "options": {}
+      },
+      "id": "162c28be-ed1f-4ebd-8d78-d6be94855113",
+      "name": "Supabase: status enriching",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the Slack lead card (Block Kit) from one Supabase lead row.\n// Used by both paths: an existing lead (Part A) and a freshly enriched one (Part B).\nconst lead = $json;\n\nconst has = (v) => v !== undefined && v !== null && String(v).trim() !== '';\nconst cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + '\u2026' : s);\nconst count = (v) => (has(v) ? Number(v).toLocaleString('en-US') : null);\n\nconst name = lead.full_name || lead.linkedin_url || 'New lead';\n\nconst email = has(lead.work_email)\n  ? lead.work_email + (has(lead.email_status) ? ` (${lead.email_status})` : '')\n  : 'Not found';\n\nconst fields = [\n  ['Title', lead.title],\n  ['Company', lead.company_name],\n  ['Email', email],\n  ['Phone', has(lead.phone) ? lead.phone : 'Not found'],\n  ['Location', lead.location],\n  ['Company size', lead.company_size],\n  ['Industry', lead.industry],\n  ['Followers', count(lead.linkedin_followers)],\n  ['Connections', count(lead.linkedin_connections)],\n  ['Status', lead.status],\n]\n  .filter(([, value]) => has(value))\n  .slice(0, 10) // Slack allows at most 10 fields per section\n  .map(([label, value]) => ({ type: 'mrkdwn', text: cut(`*${label}*\\n${value}`, 2000) }));\n\nconst blocks = [\n  { type: 'header', text: { type: 'plain_text', text: cut(name, 150) } },\n];\n\nif (has(lead.reply_note)) {\n  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: lead.reply_note }] });\n}\nif (has(lead.headline)) {\n  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: cut(`_${lead.headline}_`, 3000) } });\n}\nif (fields.length) {\n  blocks.push({ type: 'section', fields });\n}\nif (has(lead.research_summary)) {\n  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: cut(`*Research*\\n${lead.research_summary}`, 3000) } });\n}\nif (has(lead.talking_points)) {\n  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: cut(`*Talking points*\\n${lead.talking_points}`, 3000) } });\n}\nif (!has(lead.phone)) {\n  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: ':telephone_receiver: No phone found, start on LinkedIn' }] });\n}\n\n// The three call-outcome buttons. Each carries the lead id, so the\n// workflow that handles clicks (built later) knows which lead it is.\nif (lead.status !== 'do_not_contact') {\n  const buttons = [\n    { type: 'button', action_id: 'call_connected', style: 'primary', text: { type: 'plain_text', text: 'Picked up' }, value: lead.id },\n    { type: 'button', action_id: 'call_no_answer', text: { type: 'plain_text', text: 'Did not pick up' }, value: lead.id },\n    { type: 'button', action_id: 'wrong_person', style: 'danger', text: { type: 'plain_text', text: 'Wrong person' }, value: lead.id },\n  ];\n  if (has(lead.linkedin_url)) {\n    buttons.push({ type: 'button', action_id: 'open_linkedin', text: { type: 'plain_text', text: 'LinkedIn' }, url: lead.linkedin_url });\n  }\n  blocks.push({ type: 'actions', block_id: 'call_outcome', elements: buttons });\n}\n\nreturn [{\n  json: {\n    channel: lead.reply_channel || lead.slack_channel_id,\n    thread_ts: lead.reply_thread_ts || lead.slack_thread_ts,\n    text: `Lead card: ${name}`, // fallback for notifications\n    blocks,\n    unfurl_links: false,\n  },\n}];\n"
+      },
+      "id": "25523c4f-3eac-40b4-b9d8-b3f9894c00f2",
+      "name": "Build lead card",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        650
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "e1ee5279-9ebd-4a96-9f97-4e5c3e7e85ad",
+      "name": "Slack: post lead card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        650
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clay-enriched",
+        "options": {}
+      },
+      "id": "60794119-126c-4b90-95e8-949f028f08ff",
+      "name": "Clay results",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1000
+      ],
+      "webhookId": "a0778659-4dab-4b8c-bf9b-a088304f7dd0"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Same Supabase URL as the Config node in Part A.\nreturn [{\n  json: {\n    supabase_url: 'https://YOUR-PROJECT.supabase.co',\n  },\n}];\n"
+      },
+      "id": "51a4650b-ad4b-452e-897d-a9688815980a",
+      "name": "Config (results)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clay posts the enriched person here. Pick out the fields that have a\n// Supabase column, tidy them up, and keep the full payload in `enrichment`.\nconst b = $('Clay results').first().json.body || {};\nif (!b.lead_id) {\n  throw new Error('Clay sent no lead_id. Add a lead_id key to the HTTP API column body.');\n}\n\nconst text = (v) => (v === undefined || v === null || String(v).trim() === '') ? null : String(v).trim();\nconst num = (v) => {\n  const n = parseInt(String(v ?? '').replace(/[^0-9]/g, ''), 10);\n  return Number.isFinite(n) ? n : null;\n};\nconst parseMaybeJson = (v) => {\n  if (typeof v !== 'string') return v;\n  try { return JSON.parse(v); } catch { return v; }\n};\n// Lists (from Clay AI columns) become one bullet per line\nconst bullets = (v) => {\n  v = parseMaybeJson(v);\n  if (v === undefined || v === null || v === '') return null;\n  return Array.isArray(v) ? v.map((x) => `\u2022 ${String(x).trim()}`).join('\\n') : String(v).trim();\n};\n\n// The AI column may arrive as one JSON object: { summary, talking_points }\nconst research = parseMaybeJson(b.research) || {};\n\nconst first = text(b.first_name);\nconst last = text(b.last_name);\n\nconst update = {\n  first_name: first,\n  last_name: last,\n  full_name: text(b.full_name) || [first, last].filter(Boolean).join(' ') || null,\n  title: text(b.title),\n  headline: text(b.headline),\n  location: text(b.location),\n  company_name: text(b.company_name),\n  company_domain: text(b.company_domain),\n  company_linkedin_url: text(b.company_linkedin_url),\n  company_size: text(b.company_size),\n  industry: text(b.industry),\n  work_email: text(b.work_email),\n  email_status: text(b.email_status),\n  phone: text(b.phone),\n  phone_type: text(b.phone_type),\n  linkedin_followers: num(b.linkedin_followers),\n  linkedin_connections: num(b.linkedin_connections),\n  research_summary: bullets(b.research_summary ?? research.summary),\n  talking_points: bullets(b.talking_points ?? research.talking_points),\n  enrichment: b,\n  status: 'enriched',\n};\n\n// Never overwrite a saved value with a blank one\nfor (const key of Object.keys(update)) {\n  if (update[key] === null) delete update[key];\n}\n\nreturn [{ json: { lead_id: b.lead_id, update } }];\n"
+      },
+      "id": "d8d40f64-6584-4e7f-a8de-6bbb7aa9ba32",
+      "name": "Map Clay fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('Config (results)').first().json.supabase_url }}/rest/v1/leads?id=eq.{{ $json.lead_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.update) }}",
+        "options": {}
+      },
+      "id": "37914e6f-d4e3-441e-98ce-34c15c713b48",
+      "name": "Supabase: save enrichment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        1000
+      ]
+    }
+  ],
+  "connections": {
+    "Slack Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Clean URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean URL": {
+      "main": [
+        [
+          {
+            "node": "Valid LinkedIn URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid LinkedIn URL?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: find lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: invalid link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: find lead": {
+      "main": [
+        [
+          {
+            "node": "Already in Supabase?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already in Supabase?": {
+      "main": [
+        [
+          {
+            "node": "Mark as existing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: create lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as existing": {
+      "main": [
+        [
+          {
+            "node": "Build lead card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: create lead": {
+      "main": [
+        [
+          {
+            "node": "Slack: enriching",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: enriching": {
+      "main": [
+        [
+          {
+            "node": "Send to Clay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Clay": {
+      "main": [
+        [
+          {
+            "node": "Supabase: status enriching",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build lead card": {
+      "main": [
+        [
+          {
+            "node": "Slack: post lead card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clay results": {
+      "main": [
+        [
+          {
+            "node": "Config (results)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (results)": {
+      "main": [
+        [
+          {
+            "node": "Map Clay fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Clay fields": {
+      "main": [
+        [
+          {
+            "node": "Supabase: save enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: save enrichment": {
+      "main": [
+        [
+          {
+            "node": "Build lead card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

@@ -1,0 +1,21 @@
+# Runs before every commit: ruff (lint + format), then the fast test suite.
+# Install the hook once with:  uv run pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+      - id: pytest
+        name: pytest (fast suite, no paid APIs)
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,0 +1,28 @@
+# Secrets: real keys live only in .env (never committed)
+.env
+.env.*
+!.env.example
+*secret*
+*credentials*
+notes-private*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# macOS
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json

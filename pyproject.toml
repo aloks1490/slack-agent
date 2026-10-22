@@ -1,0 +1,58 @@
+# Project definition: dependencies, entry point and tool settings.
+# Managed with uv:  `uv sync` installs everything, `uv run <cmd>` runs inside the venv.
+
+[project]
+name = "sdr-agent"
+version = "0.1.0"
+description = "Slack SDR agent: mention @icp-bot with a LinkedIn link, get an enriched lead card, CRM record and follow-ups."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "slack-bolt>=1.30",          # Slack listeners + Socket Mode
+    "supabase>=2.33",            # Supabase (source of truth)
+    "hubspot-api-client>=12.0",  # HubSpot CRM
+    "httpx>=0.28",               # HTTP for Deepline, HeyReach, Instantly
+    "tenacity>=9.2",             # retries with backoff
+    "anthropic>=2.1",            # Claude: research, fit scores, drafts
+    "pydantic>=2.14",            # data models
+    "pydantic-settings>=2.16",   # settings from .env
+    "apscheduler>=3.11,<4",      # scheduled sweeps and reports
+]
+
+[project.scripts]
+sdr-agent = "sdr_agent.main:main"   # `uv run sdr-agent` starts the bot
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-mock>=3.17",
+    "pytest-cov>=7.1",
+    "respx>=0.23",        # fake HTTP responses for httpx in tests
+    "ruff>=0.9",
+    "pre-commit>=4.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sdr_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# Paid suites are skipped by default; run them on purpose with `-m live` or `-m llm`.
+addopts = "-m 'not live and not llm'"
+markers = [
+    "live: calls real external APIs (costs credits); run with -m live",
+    "llm: calls Claude (costs tokens); run with -m llm",
+]

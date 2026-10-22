@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SDR Agent Docs</title>
+<style>
+:root{--bg:#f7f7f8;--fg:#1a1a1a;--muted:#6b7280;--card:#fff;--line:#e5e7eb;--accent:#4A154B}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+header strong{margin-right:8px}
+select{font:inherit;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card)}
+#toc{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+#toc a{font-size:13px;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+main{max-width:1200px;margin:0 auto;padding:16px}
+h1{font-size:24px} h2{margin-top:36px;padding-top:12px;border-top:1px solid var(--line)} h3{margin-top:24px}
+table{border-collapse:collapse;margin:8px 0} td,th{border:1px solid var(--line);padding:4px 10px;text-align:left}
+code{background:#eef0f3;padding:1px 5px;border-radius:4px;font-size:90%}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto;margin:12px 0}
+.chart svg{max-width:none}
+hr{border:0}
+</style></head><body>
+<header><strong>Slack SDR Agent</strong>
+<select id="file">
+  <option value="docs/ARCHITECTURE.md">Architecture</option>
+  <option value="docs/IMPLEMENTATION_PLAN.md">Implementation plan</option>
+  <option value="docs/TESTING.md">Testing plan</option>
+  <option value="docs/TECH_STACK.md">Tech stack</option>
+  <option value="README.md">README</option>
+  <option value="archive/n8n-clay/n8n-decision-flow.md">(old) n8n decision flow</option>
+  <option value="archive/n8n-clay/sdr-agent-diagrams.md">(old) n8n + Clay overview</option>
+</select></header>
+<nav id="toc"></nav>
+<main id="out">Loading…</main>
+<script type="module">
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js';
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:false,securityLevel:'loose',flowchart:{useMaxWidth:false,htmlLabels:true}});
+const sel=document.getElementById('file'), out=document.getElementById('out'), toc=document.getElementById('toc');
+async function load(f){
+  out.textContent='Loading…';
+  const md=await (await fetch(f+'?t='+Date.now())).text();
+  out.innerHTML=marked.parse(md);
+  out.querySelectorAll('code.language-mermaid').forEach(c=>{const d=document.createElement('div');d.className='chart mermaid';d.textContent=c.textContent;c.parentElement.replaceWith(d);});
+  toc.innerHTML='';
+  out.querySelectorAll('h2').forEach((h,i)=>{h.id='s'+i;const a=document.createElement('a');a.href='#s'+i;a.textContent=h.textContent;toc.appendChild(a);});
+  await mermaid.run({nodes:out.querySelectorAll('.mermaid')});
+}
+const q=new URLSearchParams(location.search).get('file'); if(q) sel.value=q;
+sel.onchange=()=>{history.replaceState(null,'','?file='+sel.value);load(sel.value);};
+load(sel.value);
+</script></body></html>

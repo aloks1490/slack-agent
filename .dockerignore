@@ -1,0 +1,10 @@
+# Keep secrets, local envs and non-runtime files out of the Docker image.
+.env
+.env.*
+.venv/
+.git/
+archive/
+docs/
+tests/
+__pycache__/
+*.pyc
